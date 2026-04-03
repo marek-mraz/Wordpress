@@ -1,0 +1,30 @@
+**/apply_patch.txt
+chat.md
+errors.md
+# argocd-example-apps
+# Repomix artifacts
+# helm-charts/keycloak
+scripts2
+**/apply_patch.txt
+reprovision_m5stack_003.sh
+helm-charts/emqx/
+
+**/node_modules/
+**/dist/
+**/build/
+**/coverage/
+**/logs/
+**/tmp/
+**/temp/
+**/.git/
+**/.vscode/
+**/.idea/
+
+
+containing
+
+chat.md
+apply_patch.txt
+errors.md
+marek-mraz.com
+helm-charts/keycloak/chart/README.md

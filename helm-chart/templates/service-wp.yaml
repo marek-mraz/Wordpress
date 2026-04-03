@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "wordpress.fullname" . }}-web
+  labels:
+    {{- include "wordpress.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  ports:
+    # Expose on 8080 so Traefik IngressRoute can route without root privileges;
+    # the container listens on port 80 (Apache default).
+    - port: 8080
+      targetPort: 80
+  selector:
+    {{- include "wordpress.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: web

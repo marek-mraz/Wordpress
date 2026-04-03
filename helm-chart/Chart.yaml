@@ -1,0 +1,16 @@
+apiVersion: v2
+name: wordpress
+description: A cloud-native WordPress application following strict resiliency parameters.
+type: application
+version: 1.0.0
+appVersion: "6.2.2"
+keywords:
+  - wordpress
+  - cms
+  - mariadb
+home: https://wordpress.org
+sources:
+  - https://github.com/docker-library/wordpress
+maintainers:
+  - name: platform-team
+    email: platform@mark-frost.sk
