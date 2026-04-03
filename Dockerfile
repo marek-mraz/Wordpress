@@ -22,5 +22,9 @@ WORKDIR /usr/src/wordpress
 COPY composer.json ./
 RUN composer install --no-scripts --no-autoloader
 
+# Copy custom environment plugin as a must-use plugin
+RUN mkdir -p ./wp-content/mu-plugins
+COPY plugins/mu-plugins/oidc.php ./wp-content/mu-plugins/oidc.php
+
 # Set working directory
 WORKDIR /var/www/html

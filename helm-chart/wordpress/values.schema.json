@@ -15,6 +15,8 @@
       "required": ["replicaCount", "image", "storage"],
       "properties": {
         "replicaCount": { "type": "integer", "minimum": 1 },
+        "theme": { "type": "string" },
+        "plugins": { "type": "string" },
         "image": {
           "type": "object",
           "required": ["repository", "tag"],
@@ -34,8 +36,23 @@
     "oauth": {
       "type": "object",
       "properties": {
+        "enabled": { "type": "boolean" },
         "clientId": { "type": "string" },
-        "issuerUrl": { "type": "string", "format": "uri" }
+        "scope": { "type": "string" },
+        "endpointLogin": { "type": "string", "format": "uri" },
+        "endpointUserInfo": { "type": "string", "format": "uri" },
+        "endpointToken": { "type": "string", "format": "uri" },
+        "endpointLogout": { "type": "string", "format": "uri" },
+        "identityKey": { "type": "string" },
+        "nicknameKey": { "type": "string" },
+        "emailFormat": { "type": "string" },
+        "displayNameFormat": { "type": "string" },
+        "linkExistingUsers": { "type": "string" },
+        "createIfNotExists": { "type": "string" },
+        "redirectBack": { "type": "string" },
+        "identifyWithUsername": { "type": "string" },
+        "enableRefreshToken": { "type": "string" },
+        "enforcePrivacy": { "type": "string" }
       }
     },
     "database": {

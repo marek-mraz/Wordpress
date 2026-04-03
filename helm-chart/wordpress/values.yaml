@@ -5,6 +5,10 @@ global:
 app:
   # Number of WordPress pod replicas
   replicaCount: 1
+  # Theme to install and activate via WP-CLI on startup
+  theme: ""
+  # Space-separated list of plugins to install and activate via WP-CLI on startup
+  plugins: ""
   image:
     repository: wordpress
     tag: "6.2.2-apache"
@@ -26,11 +30,25 @@ app:
       memory: 512Mi
 
 oauth:
+  enabled: true
   # Keycloak client ID registered for this WordPress instance
   clientId: "wordpress"
-  # OIDC issuer URL — must match the Keycloak realm base URL
-  issuerUrl: "https://auth.example.com/realms/smart-city"
   # clientSecret is injected via the credentials secret — never set a default here
+  scope: "email profile openid offline_access"
+  endpointLogin: "https://auth.example.com/realms/smart-city/protocol/openid-connect/auth"
+  endpointUserInfo: "https://auth.example.com/realms/smart-city/protocol/openid-connect/userinfo"
+  endpointToken: "https://auth.example.com/realms/smart-city/protocol/openid-connect/token"
+  endpointLogout: "https://auth.example.com/realms/smart-city/protocol/openid-connect/logout"
+  identityKey: "preferred_username"
+  nicknameKey: "preferred_username"
+  emailFormat: "{email}"
+  displayNameFormat: "{given_name} {family_name}"
+  linkExistingUsers: "true"
+  createIfNotExists: "true"
+  redirectBack: "true"
+  identifyWithUsername: "true"
+  enableRefreshToken: "true"
+  enforcePrivacy: "false"
 
 database:
   # Set to false to use an external database

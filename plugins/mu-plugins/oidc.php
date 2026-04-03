@@ -1,6 +1,6 @@
 <?php
 /**
- * Plugin Name: my-plugin-env
+ * Plugin Name: mu-plugins
  * Description: Injects environment variables into the plugin settings.
  */
 
