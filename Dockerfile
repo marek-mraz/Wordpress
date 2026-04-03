@@ -1,0 +1,21 @@
+# Start from the official WordPress image
+FROM wordpress:latest
+
+# Install Git, Unzip, and Less
+# 'less' is required for WP-CLI to display output correctly
+RUN apt-get update && apt-get install -y \
+    git \
+    unzip \
+    less \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy Composer binary from the official Composer image
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+# --- INSTALL WP-CLI ---
+RUN curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar \
+    && chmod +x wp-cli.phar \
+    && mv wp-cli.phar /usr/local/bin/wp
+
+# Set working directory
+WORKDIR /var/www/html
