@@ -10,8 +10,8 @@ app:
   # Space-separated list of plugins to install and activate via WP-CLI on startup
   plugins: ""
   image:
-    repository: wordpress
-    tag: "6.2.2-apache"
+    repository: ghcr.io/marek-mraz/wordpress
+    tag: "30bc300"
     pullPolicy: IfNotPresent
   # busybox image used by the wait-for-mariadb initContainer
   busyboxImage: "busybox:1.36"
