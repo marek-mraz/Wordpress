@@ -17,5 +17,10 @@ RUN curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli
     && chmod +x wp-cli.phar \
     && mv wp-cli.phar /usr/local/bin/wp
 
+# Install base plugins via Composer into the template directory
+WORKDIR /usr/src/wordpress
+COPY composer.json ./
+RUN composer install --no-scripts --no-autoloader
+
 # Set working directory
 WORKDIR /var/www/html

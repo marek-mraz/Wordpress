@@ -1,11 +1,8 @@
-.claude/skills/helm-chart-builder/SKILL.md
-.claude/skills/helm-chart-builder/.claude-plugin/plugin.json
-.claude/skills/helm-chart-builder/references/chart-patterns.md
-.claude/skills/helm-chart-builder/references/values-design.md
-.claude/skills/helm-chart-builder/scripts/chart_analyzer.py
-.claude/skills/helm-chart-builder/scripts/values_validator.py
+.claude
 apply_patch.js
 apply_patch.txt
 repomix-output.md
 repomix.config.json
 repomix-instruction.md
+errors.md
+chat.md

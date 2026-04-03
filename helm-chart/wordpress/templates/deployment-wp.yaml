@@ -94,90 +94,20 @@ spec:
                 secretKeyRef:
                   name: {{ include "wordpress.fullname" . }}-credentials
                   key: wordpress-password
-            - name: WORDPRESS_CONFIG_EXTRA
-              value: |
-                {{ .Values.app.wordpressConfigExtra | default "" }}
-                {{- if .Values.oauth.enabled }}
-                define('OIDC_CLIENT_ID', getenv('OIDC_CLIENT_ID'));
-                define('OIDC_CLIENT_SECRET', getenv('OIDC_CLIENT_SECRET'));
-                define('OIDC_ENDPOINT_LOGIN_URL', getenv('OIDC_ENDPOINT_LOGIN'));
-                define('OIDC_ENDPOINT_USERINFO_URL', getenv('OIDC_ENDPOINT_USERINFO'));
-                define('OIDC_ENDPOINT_TOKEN_URL', getenv('OIDC_ENDPOINT_TOKEN'));
-                define('OIDC_ENDPOINT_LOGOUT_URL', getenv('OIDC_ENDPOINT_LOGOUT'));
-                define('OIDC_CLIENT_SCOPE', getenv('OIDC_SCOPE'));
-                define('OIDC_CREATE_IF_DOES_NOT_EXIST', filter_var(getenv('OIDC_CREATE_IF_NOT_EXISTS'), FILTER_VALIDATE_BOOLEAN));
-                define('OIDC_LINK_EXISTING_USERS', filter_var(getenv('OIDC_LINK_EXISTING_USERS'), FILTER_VALIDATE_BOOLEAN));
-                define('OIDC_REDIRECT_USER_BACK', filter_var(getenv('OIDC_REDIRECT_BACK'), FILTER_VALIDATE_BOOLEAN));
-                {{- end }}
-            - name: WP_THEME
-              value: {{ .Values.app.theme | quote }}
-            - name: WP_PLUGINS
-              value: {{ .Values.app.plugins | quote }}
-            {{- if .Values.oauth.enabled }}
-            - name: OIDC_CLIENT_ID
+            {{- if .Values.oauth }}
+            - name: OAUTH_CLIENT_ID
               value: {{ .Values.oauth.clientId | quote }}
-            - name: OIDC_CLIENT_SECRET
+            - name: OAUTH_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
                   name: {{ include "wordpress.fullname" . }}-credentials
                   key: oauth-client-secret
-            - name: OIDC_SCOPE
-              value: {{ .Values.oauth.scope | quote }}
-            - name: OIDC_ENDPOINT_LOGIN
-              value: {{ .Values.oauth.endpointLogin | quote }}
-            - name: OIDC_ENDPOINT_USERINFO
-              value: {{ .Values.oauth.endpointUserInfo | quote }}
-            - name: OIDC_ENDPOINT_TOKEN
-              value: {{ .Values.oauth.endpointToken | quote }}
-            - name: OIDC_ENDPOINT_LOGOUT
-              value: {{ .Values.oauth.endpointLogout | quote }}
-            - name: OIDC_IDENTITY_KEY
-              value: {{ .Values.oauth.identityKey | quote }}
-            - name: OIDC_NICKNAME_KEY
-              value: {{ .Values.oauth.nicknameKey | quote }}
-            - name: OIDC_EMAIL_FORMAT
-              value: {{ .Values.oauth.emailFormat | quote }}
-            - name: OIDC_DISPLAYNAME_FORMAT
-              value: {{ .Values.oauth.displayNameFormat | quote }}
-            - name: OIDC_LINK_EXISTING_USERS
-              value: {{ .Values.oauth.linkExistingUsers | quote }}
-            - name: OIDC_CREATE_IF_NOT_EXISTS
-              value: {{ .Values.oauth.createIfNotExists | quote }}
-            - name: OIDC_REDIRECT_BACK
-              value: {{ .Values.oauth.redirectBack | quote }}
-            - name: OIDC_IDENTIFY_WITH_USERNAME
-              value: {{ .Values.oauth.identifyWithUsername | quote }}
-            - name: OIDC_ENABLE_REFRESH_TOKEN
-              value: {{ .Values.oauth.enableRefreshToken | quote }}
-            - name: OIDC_ENFORCE_PRIVACY
-              value: {{ .Values.oauth.enforcePrivacy | quote }}
+            - name: OAUTH_ISSUER_URL
+              value: {{ .Values.oauth.issuerUrl | quote }}
             {{- end }}
           volumeMounts:
             - name: wordpress-data
               mountPath: /var/www/html
-          lifecycle:
-            postStart:
-              exec:
-                command:
-                  - /bin/bash
-                  - -c
-                  - |
-                    cat << 'EOF' > /usr/local/bin/setup-wp.sh
-                    #!/bin/bash
-                    while [ ! -f /var/www/html/wp-config.php ]; do sleep 5; done
-                    sleep 10 # Allow WP to complete initial file copy
-                    if [ -n "$WP_THEME" ]; then
-                      wp theme install "$WP_THEME" --activate --allow-root || true
-                    fi
-                    if [ -n "$WP_PLUGINS" ]; then
-                      for plugin in $WP_PLUGINS; do
-                        wp plugin install "$plugin" --activate --allow-root || true
-                      done
-                    fi
-                    wp plugin activate daggerhart-openid-connect-generic --allow-root || true
-                    EOF
-                    chmod +x /usr/local/bin/setup-wp.sh
-                    nohup /usr/local/bin/setup-wp.sh > /var/www/html/setup-wp.log 2>&1 &
           resources:
             {{- toYaml .Values.app.resources | nindent 12 }}
           startupProbe:
