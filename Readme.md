@@ -1,5 +1,6 @@
 # Custom WordPress Deployment
 
+
 Custom Docker-based WordPress deployment with plugin management and OAuth2 authentication.
 
 ## What's Included
