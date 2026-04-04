@@ -60,7 +60,7 @@ function oidc_inject_settings($settings) {
     $settings->create_if_does_not_exist = get_env_value('OIDC_CREATE_IF_NOT_EXISTS') === 'true' ? 1 : 0;
     $settings->redirect_user_back       = get_env_value('OIDC_REDIRECT_BACK') === 'true' ? 1 : 0;
     $settings->identify_with_username   = get_env_value('OIDC_IDENTIFY_WITH_USERNAME') === 'true' ? 1 : 0;
-    $settings->refresh_token_enable     = get_env_value('OIDC_ENABLE_REFRESH_TOKEN') === 'true' ? 1 : 0;
+    $settings->token_refresh_enable     = get_env_value('OIDC_ENABLE_REFRESH_TOKEN') === 'true' ? 1 : 0;
 
     $settings->login_type = 'button';
     $settings->http_request_timeout = 5;
@@ -77,7 +77,7 @@ function oidc_assign_roles_hierarchy( $user, $user_claim ) {
     // --- SETTINGS: Define your Keycloak Role Names here ---
     $role_for_admin  = 'admin';   // Create a role named "admin" in Keycloak
     $role_for_editor = 'editor';  // Create a role named "editor" in Keycloak
-    $client_id       = 'animatorkysk_prod';
+    $client_id       = get_env_value('OIDC_CLIENT_ID') ? get_env_value('OIDC_CLIENT_ID') : 'animatorkysk_prod';
     // -----------------------------------------------------
 
     // Initialize list to hold all roles found
