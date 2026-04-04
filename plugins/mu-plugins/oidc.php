@@ -4,6 +4,12 @@
  * Description: Injects environment variables into the plugin settings.
  */
 
+function oidc_log($message) {
+    $ts = date('Y-m-d H:i:s');
+    $line = "[{$ts}] [oidc-mu-plugin] {$message}" . PHP_EOL;
+    file_put_contents('php://stderr', $line);
+}
+
 // 1. Helper function to find the variable anywhere
 function get_env_value($key) {
     if (getenv($key)) return getenv($key);
@@ -12,9 +18,17 @@ function get_env_value($key) {
     return false;
 }
 
+oidc_log('mu-plugin loaded');
+
 // 2. Define Constants
 // This locks the fields in the WP Admin UI (greys them out)
 if (get_env_value('OIDC_CLIENT_ID')) {
+    oidc_log('OIDC_CLIENT_ID found: ' . get_env_value('OIDC_CLIENT_ID'));
+    oidc_log('OIDC_ENDPOINT_LOGIN: ' . (get_env_value('OIDC_ENDPOINT_LOGIN') ?: '(not set)'));
+    oidc_log('OIDC_ENDPOINT_TOKEN: ' . (get_env_value('OIDC_ENDPOINT_TOKEN') ?: '(not set)'));
+    oidc_log('OIDC_ENDPOINT_USERINFO: ' . (get_env_value('OIDC_ENDPOINT_USERINFO') ?: '(not set)'));
+    oidc_log('OIDC_ENDPOINT_LOGOUT: ' . (get_env_value('OIDC_ENDPOINT_LOGOUT') ?: '(not set)'));
+
     if (!defined('OIDC_CLIENT_ID')) define('OIDC_CLIENT_ID', get_env_value('OIDC_CLIENT_ID'));
     if (!defined('OIDC_CLIENT_SECRET')) define('OIDC_CLIENT_SECRET', get_env_value('OIDC_CLIENT_SECRET'));
     if (!defined('OIDC_CLIENT_SCOPE')) define('OIDC_CLIENT_SCOPE', get_env_value('OIDC_SCOPE'));
@@ -28,6 +42,9 @@ if (get_env_value('OIDC_CLIENT_ID')) {
     if (!defined('OIDC_CREATE_IF_DOES_NOT_EXIST')) define('OIDC_CREATE_IF_DOES_NOT_EXIST', get_env_value('OIDC_CREATE_IF_NOT_EXISTS') === 'true');
     if (!defined('OIDC_REDIRECT_USER_BACK')) define('OIDC_REDIRECT_USER_BACK', get_env_value('OIDC_REDIRECT_BACK') === 'true');
     if (!defined('OIDC_ENFORCE_PRIVACY')) define('OIDC_ENFORCE_PRIVACY', get_env_value('OIDC_ENFORCE_PRIVACY') === 'true');
+    oidc_log('Constants defined successfully');
+} else {
+    oidc_log('WARNING: OIDC_CLIENT_ID not found in env — OIDC disabled');
 }
 
 // 3. Inject Values into the Settings Object via WP Core Option Filters
@@ -39,10 +56,12 @@ function oidc_inject_settings($settings) {
         $settings = array();
     }
 
-    // If we can't find the Client ID, return the object untouched to prevent errors
     if (!get_env_value('OIDC_CLIENT_ID')) {
+        oidc_log('oidc_inject_settings: OIDC_CLIENT_ID missing, returning defaults');
         return $settings;
     }
+
+    oidc_log('oidc_inject_settings: injecting env vars into settings');
 
     $settings['client_id']       = get_env_value('OIDC_CLIENT_ID');
     $settings['client_secret']   = get_env_value('OIDC_CLIENT_SECRET');
@@ -104,26 +123,24 @@ function oidc_assign_roles_hierarchy( $user, $user_claim ) {
         $all_found_roles = array_merge( $all_found_roles, $user_claim['resource_access'][ $client_id ]['roles'] );
     }
 
-    // --- DEBUG LOGGING ---
-    error_log( '=== OIDC ROLE CHECK FOR: ' . $user->user_login . ' ===' );
-    error_log( 'Found Roles: ' . print_r( $all_found_roles, true ) );
-    // ---------------------
+    oidc_log( '=== ROLE CHECK FOR: ' . $user->user_login . ' ===' );
+    oidc_log( 'Client ID used: ' . $client_id );
+    oidc_log( 'Roles claim (raw): ' . json_encode( $user_claim['roles'] ?? '(absent)' ) );
+    oidc_log( 'realm_access.roles: ' . json_encode( $user_claim['realm_access']['roles'] ?? '(absent)' ) );
+    oidc_log( 'resource_access.' . $client_id . '.roles: ' . json_encode( $user_claim['resource_access'][ $client_id ]['roles'] ?? '(absent)' ) );
+    oidc_log( 'All found roles: ' . json_encode( $all_found_roles ) );
 
     // 4. Assign WordPress Role (Hierarchy: Admin > Editor > Subscriber)
-    
-    // CHECK FOR ADMIN
     if ( in_array( $role_for_admin, $all_found_roles ) ) {
-        error_log( 'OIDC MATCH: Found "' . $role_for_admin . '". Setting role to ADMINISTRATOR.' );
+        oidc_log( 'MATCH: "' . $role_for_admin . '" → setting ADMINISTRATOR' );
         $user->set_role( 'administrator' );
     } 
-    // CHECK FOR EDITOR
     elseif ( in_array( $role_for_editor, $all_found_roles ) ) {
-        error_log( 'OIDC MATCH: Found "' . $role_for_editor . '". Setting role to EDITOR.' );
+        oidc_log( 'MATCH: "' . $role_for_editor . '" → setting EDITOR' );
         $user->set_role( 'editor' );
     } 
-    // DEFAULT
     else {
-        error_log( 'OIDC: No matching roles found. Setting role to SUBSCRIBER.' );
+        oidc_log( 'No matching roles → setting SUBSCRIBER' );
         $user->set_role( 'subscriber' );
     }
 }
