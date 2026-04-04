@@ -28,6 +28,8 @@ if (get_env_value('OIDC_CLIENT_ID')) {
     oidc_log('OIDC_ENDPOINT_TOKEN: ' . (get_env_value('OIDC_ENDPOINT_TOKEN') ?: '(not set)'));
     oidc_log('OIDC_ENDPOINT_USERINFO: ' . (get_env_value('OIDC_ENDPOINT_USERINFO') ?: '(not set)'));
     oidc_log('OIDC_ENDPOINT_LOGOUT: ' . (get_env_value('OIDC_ENDPOINT_LOGOUT') ?: '(not set)'));
+    oidc_log('OIDC_JWKS_URI: ' . (get_env_value('OIDC_JWKS_URI') ?: '(not set)'));
+    oidc_log('OIDC_ISSUER: ' . (get_env_value('OIDC_ISSUER') ?: '(not set)'));
 
     if (!defined('OIDC_CLIENT_ID')) define('OIDC_CLIENT_ID', get_env_value('OIDC_CLIENT_ID'));
     if (!defined('OIDC_CLIENT_SECRET')) define('OIDC_CLIENT_SECRET', get_env_value('OIDC_CLIENT_SECRET'));
@@ -36,6 +38,8 @@ if (get_env_value('OIDC_CLIENT_ID')) {
     if (!defined('OIDC_ENDPOINT_USERINFO_URL')) define('OIDC_ENDPOINT_USERINFO_URL', get_env_value('OIDC_ENDPOINT_USERINFO'));
     if (!defined('OIDC_ENDPOINT_TOKEN_URL')) define('OIDC_ENDPOINT_TOKEN_URL', get_env_value('OIDC_ENDPOINT_TOKEN'));
     if (!defined('OIDC_ENDPOINT_LOGOUT_URL')) define('OIDC_ENDPOINT_LOGOUT_URL', get_env_value('OIDC_ENDPOINT_LOGOUT'));
+    if (!defined('OIDC_JWKS_URI')) define('OIDC_JWKS_URI', get_env_value('OIDC_JWKS_URI'));
+    if (!defined('OIDC_ISSUER')) define('OIDC_ISSUER', get_env_value('OIDC_ISSUER'));
     
     // Lock boolean settings if defined
     if (!defined('OIDC_LINK_EXISTING_USERS')) define('OIDC_LINK_EXISTING_USERS', get_env_value('OIDC_LINK_EXISTING_USERS') === 'true');
@@ -71,6 +75,14 @@ function oidc_inject_settings($settings) {
     $settings['endpoint_userinfo']    = get_env_value('OIDC_ENDPOINT_USERINFO');
     $settings['endpoint_token']       = get_env_value('OIDC_ENDPOINT_TOKEN');
     $settings['endpoint_end_session'] = get_env_value('OIDC_ENDPOINT_LOGOUT');
+    
+    if (get_env_value('OIDC_JWKS_URI')) {
+        $settings['jwks_uri'] = get_env_value('OIDC_JWKS_URI');
+        $settings['endpoint_jwks'] = get_env_value('OIDC_JWKS_URI');
+    }
+    if (get_env_value('OIDC_ISSUER')) {
+        $settings['issuer'] = get_env_value('OIDC_ISSUER');
+    }
 
     $settings['identity_key']       = get_env_value('OIDC_IDENTITY_KEY');
     $settings['nickname_key']       = get_env_value('OIDC_NICKNAME_KEY');
