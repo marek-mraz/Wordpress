@@ -51,18 +51,9 @@ if (get_env_value('OIDC_CLIENT_ID')) {
     oidc_log('WARNING: OIDC_CLIENT_ID not found in env — OIDC disabled');
 }
 
-// Allow WordPress to make HTTP requests to internal Kubernetes services (.local / private IPs)
-add_filter('http_request_host_is_external', function($allow, $host, $url) {
-    if (strpos($host, '.local') !== false || strpos($host, 'keycloak') !== false) {
-        return true;
-    }
-    return $allow;
-}, 10, 3);
-
-add_filter('http_request_args', function($args, $url) {
-    $args['reject_unsafe_urls'] = false;
-    return $args;
-}, 10, 2);
+// Security Fix: Removed global SSRF bypass filters (`http_request_host_is_external` and `reject_unsafe_urls`).
+// The OIDC plugin natively bypasses SSRF protection safely using `wp_remote_post` instead of `wp_safe_remote_post`
+// because `allow_internal_idp` is set to 1 below.
 
 // 3. Inject Values into the Settings Object via WP Core Option Filters
 add_filter('option_openid_connect_generic_settings', 'oidc_inject_settings');
@@ -110,7 +101,8 @@ function oidc_inject_settings($settings) {
     $settings['token_refresh_enable']     = get_env_value('OIDC_ENABLE_REFRESH_TOKEN') === 'true' ? 1 : 0;
     $settings['enforce_privacy']          = get_env_value('OIDC_ENFORCE_PRIVACY') === 'true' ? 1 : 0;
 
-    $settings['login_type'] = 'button';
+    // ENFORCEMENT: Force SSO Auto-Login Flow (Bypasses rendering of local login form)
+    $settings['login_type'] = 'auto';
     $settings['http_request_timeout'] = 15;
     $settings['no_sslverify'] = 0;
     $settings['allow_internal_idp'] = 1;
@@ -170,3 +162,33 @@ function oidc_assign_roles_hierarchy( $user, $user_claim ) {
         $user->set_role( 'subscriber' );
     }
 }
+
+// =========================================================================
+// PHASE 5: LOCAL AUTHENTICATION DEPRECATION & LOCKDOWN
+// =========================================================================
+
+// 5.1. Hide and Disable Password Modification in the User Profile
+add_filter('show_password_fields', '__return_false');
+
+// 5.2. Disable WordPress 5.6+ Application Passwords
+add_filter('wp_is_application_passwords_available', '__return_false');
+
+// 5.3. Eradicate Local Password Reset Workflows
+add_filter('allow_password_reset', '__return_false');
+
+add_action('login_init', function() {
+    if (isset($_GET['action']) && in_array($_GET['action'], array('lostpassword', 'retrievepassword'))) {
+        wp_redirect(home_url(), 301);
+        exit;
+    }
+});
+
+add_filter('gettext', function($text) {
+    if ($text === 'Lost your password?') {
+        return '';
+    }
+    return $text;
+});
+
+// 5.4. Disable Local Credential Verification
+remove_filter('authenticate', 'wp_authenticate_username_password', 20, 3);
