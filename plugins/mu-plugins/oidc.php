@@ -51,6 +51,19 @@ if (get_env_value('OIDC_CLIENT_ID')) {
     oidc_log('WARNING: OIDC_CLIENT_ID not found in env — OIDC disabled');
 }
 
+// Allow WordPress to make HTTP requests to internal Kubernetes services (.local / private IPs)
+add_filter('http_request_host_is_external', function($allow, $host, $url) {
+    if (strpos($host, '.local') !== false || strpos($host, 'keycloak') !== false) {
+        return true;
+    }
+    return $allow;
+}, 10, 3);
+
+add_filter('http_request_args', function($args, $url) {
+    $args['reject_unsafe_urls'] = false;
+    return $args;
+}, 10, 2);
+
 // 3. Inject Values into the Settings Object via WP Core Option Filters
 add_filter('option_openid_connect_generic_settings', 'oidc_inject_settings');
 add_filter('default_option_openid_connect_generic_settings', 'oidc_inject_settings');
