@@ -10,11 +10,15 @@ function oidc_log($message) {
     file_put_contents('php://stderr', $line);
 }
 
-// 1. Helper function to find the variable anywhere
+// 1. Env lookup: getenv / $_ENV only (no $_SERVER) to avoid header/CGI pollution of OIDC secrets.
 function get_env_value($key) {
-    if (getenv($key)) return getenv($key);
-    if (isset($_ENV[$key])) return $_ENV[$key];
-    if (isset($_SERVER[$key])) return $_SERVER[$key];
+    $v = getenv($key);
+    if ($v !== false && $v !== '') {
+        return $v;
+    }
+    if (isset($_ENV[$key]) && $_ENV[$key] !== '') {
+        return $_ENV[$key];
+    }
     return false;
 }
 
@@ -116,50 +120,54 @@ add_action( 'openid-connect-generic-update-user-using-current-claim', 'oidc_assi
 function oidc_assign_roles_hierarchy( $user, $user_claim ) {
     
     // --- SETTINGS: Define your Keycloak Role Names here ---
-    $role_for_admin  = 'admin';   // Create a role named "admin" in Keycloak
-    $role_for_editor = 'editor';  // Create a role named "editor" in Keycloak
-    $client_id       = get_env_value('OIDC_CLIENT_ID') ? get_env_value('OIDC_CLIENT_ID') : 'animatorkysk_prod';
+    $role_for_admin       = 'administrator'; 
+    $role_for_editor      = 'editor';
+    $role_for_author      = 'author';
+    $role_for_contributor = 'contributor';
+    $role_for_subscriber  = 'subscriber';
+    $client_id            = get_env_value('OIDC_CLIENT_ID') ? get_env_value('OIDC_CLIENT_ID') : 'animatorkysk_prod';
     // -----------------------------------------------------
 
-    // Initialize list to hold all roles found
-    $all_found_roles = [];
-
-    // 1. Check custom mapped 'roles' claim
-    if ( ! empty( $user_claim['roles'] ) ) {
-        $data = $user_claim['roles'];
-        if ( is_string( $data ) ) $data = array( $data );
-        $all_found_roles = array_merge( $all_found_roles, $data );
-    }
-
-    // 2. Check standard 'realm_access' (Realm Roles)
-    if ( ! empty( $user_claim['realm_access']['roles'] ) ) {
-        $all_found_roles = array_merge( $all_found_roles, $user_claim['realm_access']['roles'] );
-    }
-
-    // 3. Check 'resource_access' (Client Roles)
-    if ( ! empty( $user_claim['resource_access'][ $client_id ]['roles'] ) ) {
-        $all_found_roles = array_merge( $all_found_roles, $user_claim['resource_access'][ $client_id ]['roles'] );
+    // Only trust client-specific roles (resource_access[client_id].roles) to avoid cross-app role bleed.
+    $app_roles = array();
+    if ( ! empty( $user_claim['resource_access'][ $client_id ]['roles'] ) && is_array( $user_claim['resource_access'][ $client_id ]['roles'] ) ) {
+        $app_roles = $user_claim['resource_access'][ $client_id ]['roles'];
     }
 
     oidc_log( '=== ROLE CHECK FOR: ' . $user->user_login . ' ===' );
     oidc_log( 'Client ID used: ' . $client_id );
-    oidc_log( 'Roles claim (raw): ' . json_encode( $user_claim['roles'] ?? '(absent)' ) );
-    oidc_log( 'realm_access.roles: ' . json_encode( $user_claim['realm_access']['roles'] ?? '(absent)' ) );
     oidc_log( 'resource_access.' . $client_id . '.roles: ' . json_encode( $user_claim['resource_access'][ $client_id ]['roles'] ?? '(absent)' ) );
-    oidc_log( 'All found roles: ' . json_encode( $all_found_roles ) );
+    oidc_log( 'App roles used for WP mapping: ' . json_encode( $app_roles ) );
 
-    // 4. Assign WordPress Role (Hierarchy: Admin > Editor > Subscriber)
-    if ( in_array( $role_for_admin, $all_found_roles ) ) {
+    // Assign WordPress role (strict in_array avoids PHP 7.x type juggling on loose ==).
+    if ( in_array( $role_for_admin, $app_roles, true ) ) {
         oidc_log( 'MATCH: "' . $role_for_admin . '" → setting ADMINISTRATOR' );
         $user->set_role( 'administrator' );
     } 
-    elseif ( in_array( $role_for_editor, $all_found_roles ) ) {
+    elseif ( in_array( $role_for_editor, $app_roles, true ) ) {
         oidc_log( 'MATCH: "' . $role_for_editor . '" → setting EDITOR' );
         $user->set_role( 'editor' );
     } 
-    else {
-        oidc_log( 'No matching roles → setting SUBSCRIBER' );
+    elseif ( in_array( $role_for_author, $app_roles, true ) ) {
+        oidc_log( 'MATCH: "' . $role_for_author . '" → setting AUTHOR' );
+        $user->set_role( 'author' );
+    }
+    elseif ( in_array( $role_for_contributor, $app_roles, true ) ) {
+        oidc_log( 'MATCH: "' . $role_for_contributor . '" → setting CONTRIBUTOR' );
+        $user->set_role( 'contributor' );
+    }
+    elseif ( in_array( $role_for_subscriber, $app_roles, true ) ) {
+        oidc_log( 'MATCH: "' . $role_for_subscriber . '" → setting SUBSCRIBER' );
         $user->set_role( 'subscriber' );
+    }
+    else {
+        oidc_log( 'No matching client roles → denying session (no role strip)' );
+        wp_logout();
+        wp_die(
+            'Unauthorized: You do not have permission to access this application. Please contact your system administrator.',
+            'Forbidden',
+            array( 'response' => 403 )
+        );
     }
 }
 
@@ -190,5 +198,21 @@ add_filter('gettext', function($text) {
     return $text;
 });
 
-// 5.4. Disable Local Credential Verification
-remove_filter('authenticate', 'wp_authenticate_username_password', 20, 3);
+// 5.4. Disable local username/password except optional break-glass from OIDC_BREAK_GLASS_IP (env only).
+function oidc_break_glass_authenticate( $user, $username, $password ) {
+    $trusted = get_env_value( 'OIDC_BREAK_GLASS_IP' );
+    if ( $trusted === false || $trusted === '' ) {
+        return $user;
+    }
+    $ip = isset( $_SERVER['REMOTE_ADDR'] ) ? $_SERVER['REMOTE_ADDR'] : '';
+    if ( $ip === '' || $ip !== $trusted ) {
+        return $user;
+    }
+    if ( $username === null || $username === '' || $password === null || $password === '' ) {
+        return $user;
+    }
+    return wp_authenticate_username_password( $user, $username, $password );
+}
+
+add_filter( 'authenticate', 'oidc_break_glass_authenticate', 20, 3 );
+remove_filter( 'authenticate', 'wp_authenticate_username_password', 20, 3 );
