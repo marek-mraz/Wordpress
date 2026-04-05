@@ -5,14 +5,18 @@ services:
     restart: always
     working_dir: /var/www/html
     volumes:
-      # Data Persistence
-      - ./data/wordpress/wp-content:/var/www/html/wp-content
+      # Data Persistence: Only mount uploads and let the container manage themes/plugins 
+      # or mount specific dev folders if you want live-reloading.
       - ./data/wordpress/uploads:/var/www/html/wp-content/uploads
+      
+      # For live development of themes and plugins, mount them explicitly:
+      - ./wp-content/themes:/var/www/html/wp-content/themes
+      - ./wp-content/plugins:/var/www/html/wp-content/plugins
+      - ./plugins/mu-plugins:/var/www/html/wp-content/mu-plugins
  
       # Configs
       - ./config/php.conf.ini:/usr/local/etc/php/conf.d/custom.ini
       - ./.env:/var/www/html/.env
-      - ./data/wordpress/wp-content/mu-plugins:/var/www/html/wp-content/mu-plugins
       - ./composer.json:/var/www/html/composer.json
     environment:
       WORDPRESS_DB_HOST: db:3306
