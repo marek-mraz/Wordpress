@@ -120,7 +120,7 @@ add_action( 'openid-connect-generic-update-user-using-current-claim', 'oidc_assi
 function oidc_assign_roles_hierarchy( $user, $user_claim ) {
     
     // --- SETTINGS: Define your Keycloak Role Names here ---
-    $role_for_admin       = 'administrator'; 
+    $role_for_admin       = 'admin'; 
     $role_for_editor      = 'editor';
     $role_for_author      = 'author';
     $role_for_contributor = 'contributor';
@@ -216,3 +216,15 @@ function oidc_break_glass_authenticate( $user, $username, $password ) {
 
 add_filter( 'authenticate', 'oidc_break_glass_authenticate', 20, 3 );
 remove_filter( 'authenticate', 'wp_authenticate_username_password', 20, 3 );
+
+// 6. Ensure valid email for new users (Keycloak admin might not have an email)
+add_filter( 'openid-connect-generic-alter-user-data', 'oidc_ensure_valid_email', 10, 2 );
+function oidc_ensure_valid_email( $user_data, $user_claim ) {
+    oidc_log( 'Creating/Updating user data: ' . json_encode( $user_data ) );
+    if ( empty( $user_data['user_email'] ) || ! is_email( $user_data['user_email'] ) ) {
+        $fallback = sanitize_title( $user_data['user_login'] ) . '@' . (isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : 'localhost');
+        oidc_log( 'WARNING: Invalid or missing email in claim. Falling back to: ' . $fallback );
+        $user_data['user_email'] = $fallback;
+    }
+    return $user_data;
+}
