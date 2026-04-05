@@ -99,6 +99,11 @@ class OpenID_Connect_Generic_Client_Wrapper {
 		// Alter the requests according to settings.
 		add_filter( 'openid-connect-generic-alter-request', array( $client_wrapper, 'alter_request' ), 10, 2 );
 
+		// Ensure tokens are refreshed before they expire.
+		if ( $settings->token_refresh_enable ) {
+			add_action( 'init', array( $client_wrapper, 'ensure_tokens_still_fresh' ) );
+		}
+
 		if ( is_admin() ) {
 			/*
 			 * Use the ajax url to handle processing authorization without any html output
@@ -252,7 +257,15 @@ class OpenID_Connect_Generic_Client_Wrapper {
 		}
 
 		$user_id = wp_get_current_user()->ID;
-		$last_token_response = get_user_meta( $user_id, 'openid-connect-generic-last-token-response', true );
+		$last_token_response = get_user_option( 'openid-connect-generic-last-token-response', $user_id );
+
+		if ( false === $last_token_response ) {
+			$last_token_response = get_user_meta(
+				$user_id,
+				'openid-connect-generic-last-token-response',
+				true
+			);
+		}
 
 		if ( ! empty( $last_token_response['expires_in'] ) && ! empty( $last_token_response['time'] ) ) {
 			/*
@@ -296,9 +309,9 @@ class OpenID_Connect_Generic_Client_Wrapper {
 		}
 
 		// Capture the time so that access token expiration can be calculated later.
-		$token_response[] = time();
+		$token_response['time'] = time();
 
-		update_user_meta( $user_id, 'openid-connect-generic-last-token-response', $token_response );
+		update_user_option( $user_id, 'openid-connect-generic-last-token-response', $token_response );
 		$this->save_refresh_token( $manager, $token, $token_response );
 	}
 
@@ -368,7 +381,7 @@ class OpenID_Connect_Generic_Client_Wrapper {
 			$redirect_url = home_url();
 		}
 
-		$token_response = $user->get( 'openid-connect-generic-last-token-response' );
+		$token_response = get_user_option( 'openid-connect-generic-last-token-response', $user->ID );
 		if ( ! $token_response ) {
 			// Happens if non-openid login was used.
 			return $redirect_url;
@@ -377,7 +390,7 @@ class OpenID_Connect_Generic_Client_Wrapper {
 			$redirect_url = site_url( $redirect_url );
 		}
 
-		$claim = $user->get( 'openid-connect-generic-last-id-token-claim' );
+		$claim = get_user_option( 'openid-connect-generic-last-id-token-claim', $user->ID );
 
 		if ( isset( $claim['iss'] ) && 'https://accounts.google.com' == $claim['iss'] ) {
 			/*
@@ -407,8 +420,20 @@ class OpenID_Connect_Generic_Client_Wrapper {
 			$request['timeout'] = intval( $this->settings->http_request_timeout );
 		}
 
-		if ( $this->settings->no_sslverify ) {
+		// Only allow SSL bypass in local development environments.
+		if (
+			$this->settings->no_sslverify &&
+			defined( 'WP_DEBUG' ) && WP_DEBUG === true &&
+			( ! defined( 'WP_ENVIRONMENT_TYPE' ) || WP_ENVIRONMENT_TYPE === 'local' )
+		) {
+
 			$request['sslverify'] = false;
+
+			// Log warning every time this is used.
+			$this->logger->log(
+				'SSL verification disabled - ONLY for development. NEVER use in production!',
+				'ssl-bypass-warning'
+			);
 		}
 
 		return $request;
@@ -427,6 +452,32 @@ class OpenID_Connect_Generic_Client_Wrapper {
 		$authentication_request = $client->validate_authentication_request( $_GET );
 
 		if ( is_wp_error( $authentication_request ) ) {
+			// Check if this is a retryable IDP error (e.g. Safari ITP causing
+			// Keycloak session cookies to be blocked on cross-site navigation).
+			$retryable_idp_errors = array(
+				'temporarily_unavailable',
+				'authentication_expired',
+				'login_required',
+			);
+
+			$error_code = $authentication_request->get_error_code();
+			$is_retryable = in_array( $error_code, $retryable_idp_errors, true );
+			$already_retried = isset( $_GET['openid-connect-generic-retry'] );
+
+			if ( $is_retryable && ! $already_retried ) {
+				// Log the original error before retrying.
+				$this->logger->log( $authentication_request, 'retry' );
+				$this->logger->log( "Retrying authentication due to IDP error: {$error_code}", 'retry' );
+
+				// Build a fresh authentication URL and append a retry flag
+				// to prevent infinite redirect loops (max 1 retry).
+				$auth_url = $this->get_authentication_url();
+				$auth_url = add_query_arg( 'openid-connect-generic-retry', '1', $auth_url );
+
+				wp_redirect( $auth_url );
+				exit;
+			}
+
 			$this->error_redirect( $authentication_request );
 		}
 
@@ -559,7 +610,10 @@ class OpenID_Connect_Generic_Client_Wrapper {
 
 		// Provide backwards compatibility for customization using the deprecated cookie method.
 		if ( ! empty( $_COOKIE[ self::COOKIE_REDIRECT_KEY ] ) ) {
-			$redirect_url = esc_url_raw( wp_unslash( $_COOKIE[ self::COOKIE_REDIRECT_KEY ] ) );
+			$redirect_url = wp_validate_redirect(
+				esc_url_raw( wp_unslash( $_COOKIE[ self::COOKIE_REDIRECT_KEY ] ) ),
+				home_url()
+			);
 		}
 
 		// Only do redirect-user-back action hook when the plugin is configured for it.
@@ -640,9 +694,9 @@ class OpenID_Connect_Generic_Client_Wrapper {
 		}
 
 		// Store the tokens for future reference.
-		update_user_meta( $user->ID, 'openid-connect-generic-last-token-response', $token_response );
-		update_user_meta( $user->ID, 'openid-connect-generic-last-id-token-claim', $id_token_claim );
-		update_user_meta( $user->ID, 'openid-connect-generic-last-user-claim', $user_claim );
+		update_user_option( $user->ID, 'openid-connect-generic-last-token-response', $token_response );
+		update_user_option( $user->ID, 'openid-connect-generic-last-id-token-claim', $id_token_claim );
+		update_user_option( $user->ID, 'openid-connect-generic-last-user-claim', $user_claim );
 
 		return $user_claim;
 	}
@@ -660,9 +714,9 @@ class OpenID_Connect_Generic_Client_Wrapper {
 	 */
 	public function login_user( $user, $token_response, $id_token_claim, $user_claim, $subject_identity ): void {
 		// Store the tokens for future reference.
-		update_user_meta( $user->ID, 'openid-connect-generic-last-token-response', $token_response );
-		update_user_meta( $user->ID, 'openid-connect-generic-last-id-token-claim', $id_token_claim );
-		update_user_meta( $user->ID, 'openid-connect-generic-last-user-claim', $user_claim );
+		update_user_option( $user->ID, 'openid-connect-generic-last-token-response', $token_response );
+		update_user_option( $user->ID, 'openid-connect-generic-last-id-token-claim', $id_token_claim );
+		update_user_option( $user->ID, 'openid-connect-generic-last-user-claim', $user_claim );
 		// Allow plugins / themes to take action using current claims on existing user (e.g. update role).
 		do_action( 'openid-connect-generic-update-user-using-current-claim', $user, $user_claim );
 
@@ -713,12 +767,19 @@ class OpenID_Connect_Generic_Client_Wrapper {
 	 * @return false|WP_User
 	 */
 	public function get_user_by_identity( $subject_identity ) {
+		global $wpdb;
+
 		// Look for user by their openid-connect-generic-subject-identity value.
 		$user_query = new WP_User_Query(
 			array(
 				'meta_query' => array(
+					'relation' => 'OR',
 					array(
 						'key'   => 'openid-connect-generic-subject-identity',
+						'value' => $subject_identity,
+					),
+					array(
+						'key'   => $wpdb->get_blog_prefix() . 'openid-connect-generic-subject-identity',
 						'value' => $subject_identity,
 					),
 				),
@@ -847,13 +908,48 @@ class OpenID_Connect_Generic_Client_Wrapper {
 			return false;
 		}
 		/**
-		 * Extract claim from JWT.
-		 * FIXME: We probably want to verify the JWT signature/issuer here.
-		 * For example, using JWKS if applicable. For symmetrically signed
-		 * JWTs (HMAC), we need a way to specify the acceptable secrets
-		 * and each possible issuer in the config.
+		 * Extract claim from JWT with signature verification.
 		 */
 		$jwt = $src['JWT'];
+
+		// Check if JWKS endpoint is configured for JWT signature verification.
+		if ( ! empty( $this->settings->endpoint_jwks ) ) {
+			// Use configured issuer if provided, otherwise derive from endpoint_login.
+			$issuer = ! empty( $this->settings->issuer ) ?
+				$this->settings->issuer :
+				( ! empty( $this->settings->endpoint_login ) ? $this->client->get_issuer_from_endpoint( $this->settings->endpoint_login ) : '' );
+
+			// Use JWT validator for secure signature verification.
+			$jwt_validator = new OpenID_Connect_Generic_JWT_Validator(
+				$this->settings->endpoint_jwks,
+				$this->settings->client_id,
+				$issuer,
+				$this->settings->jwks_cache_ttl,
+				$this->settings->allow_internal_idp,
+				$this->logger
+			);
+
+			// Validate JWT signature and claims.
+			$body_json = $jwt_validator->validate_id_token( $jwt );
+
+			if ( is_wp_error( $body_json ) ) {
+				$this->logger->log( $body_json, 'aggregated-claim-jwt-validation-failed' );
+				return false;
+			}
+
+			if ( ! array_key_exists( $claimname, $body_json ) ) {
+				return false;
+			}
+			$claimvalue = $body_json[ $claimname ];
+			return true;
+		}
+
+		$this->logger->log(
+			'SECURITY WARNING: JWKS endpoint not configured. Aggregated claim JWT signatures are NOT being verified. This is a security vulnerability. Configure the JWKS endpoint to secure aggregated claims.',
+			'aggregated-jwt-not-verified'
+		);
+
+		// Legacy JWT decoding without signature verification (INSECURE).
 		list ( $header, $body, $rest ) = explode( '.', $jwt, 3 );
 		$body_str = base64_decode( $body, false );
 		if ( ! $body_str ) {
@@ -1098,7 +1194,7 @@ class OpenID_Connect_Generic_Client_Wrapper {
 		$user = get_user_by( 'id', $uid );
 
 		// Save some meta data about this new user for the future.
-		add_user_meta( $user->ID, 'openid-connect-generic-subject-identity', (string) $subject_identity, true );
+		update_user_option( $user->ID, 'openid-connect-generic-subject-identity', (string) $subject_identity, true );
 
 		// Log the results.
 		$end_time = microtime( true );
@@ -1120,7 +1216,7 @@ class OpenID_Connect_Generic_Client_Wrapper {
 	 */
 	public function update_existing_user( $uid, $subject_identity ) {
 		// Add the OpenID Connect meta data.
-		update_user_meta( $uid, 'openid-connect-generic-subject-identity', strval( $subject_identity ) );
+		update_user_option( $uid, 'openid-connect-generic-subject-identity', strval( $subject_identity ), true );
 
 		// Allow plugins / themes to take action on user update.
 		do_action( 'openid-connect-generic-user-update', $uid );
