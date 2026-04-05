@@ -1,0 +1,21 @@
+.csf-field-image_select .csf-fieldset figure img {
+    max-width: 106px !important;
+}
+
+#setting-error-tgmpa {
+	clear: both;
+	display: block;
+}
+#customize-control-woocommerce_catalog_columns,
+.bsf-update-nag, #vc_license-activation-notice, .rs-update-notice-wrap {display: none !important;}
+
+/* Advanced import */
+.ai-count,
+.ai-form-type,
+.ai-filter-tabs .ai-filter-group{
+	display: none;
+}
+
+.ai-item-footer-actions .ai-item-demo-link[href="#"]{
+	display: none;
+}
