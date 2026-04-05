@@ -25,9 +25,6 @@ RUN composer install --no-scripts --no-autoloader
 # Copy all local themes and plugins into the source directory
 COPY wp-content/ ./wp-content/
 
-# Copy custom environment plugin as a must-use plugin
-RUN mkdir -p ./wp-content/mu-plugins
-COPY plugins/mu-plugins/oidc.php ./wp-content/mu-plugins/oidc.php
 
 # Make sure www-data owns the copied content
 RUN chown -R www-data:www-data ./wp-content
