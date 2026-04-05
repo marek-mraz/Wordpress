@@ -111,8 +111,9 @@ function oidc_inject_settings($settings) {
     $settings['enforce_privacy']          = get_env_value('OIDC_ENFORCE_PRIVACY') === 'true' ? 1 : 0;
 
     $settings['login_type'] = 'button';
-    $settings['http_request_timeout'] = 5;
+    $settings['http_request_timeout'] = 15;
     $settings['no_sslverify'] = 0;
+    $settings['allow_internal_idp'] = 1;
 
     return $settings;
 }
