@@ -1,132 +1,107 @@
 services:
-  app:
-    container_name: ${COMPOSE_PROJECT_NAME}_app
+  wordpress:
+    container_name: local_wp_app
+    # If you have a custom Dockerfile with Composer, keep 'build: .'. 
+    # Otherwise, you can use the official image: 'image: wordpress:latest'
     build: . 
-    restart: always
-    working_dir: /var/www/html
+    restart: unless-stopped
+    ports:
+      - "8080:80" # Access locally via http://localhost:8080
     volumes:
-      # Data Persistence: Only mount uploads and let the container manage themes/plugins 
-      # or mount specific dev folders if you want live-reloading.
-      - ./data/wordpress/uploads:/var/www/html/wp-content/uploads
+      # Persist WordPress core and uploads
+      - wp_data:/var/www/html
       
-      # For live development of themes and plugins, mount them explicitly:
+      # Bind mounts for local development (mapped exactly to your tree structure)
+      # Any changes made in your IDE will instantly reflect in the container
       - ./wp-content/themes:/var/www/html/wp-content/themes
       - ./wp-content/plugins:/var/www/html/wp-content/plugins
-      - ./plugins/mu-plugins:/var/www/html/wp-content/mu-plugins
- 
-      # Configs
+      - ./wp-content/mu-plugins:/var/www/html/wp-content/mu-plugins
+      
+      # Local configuration overrides
       - ./config/php.conf.ini:/usr/local/etc/php/conf.d/custom.ini
-      - ./.env:/var/www/html/.env
-      - ./composer.json:/var/www/html/composer.json
     environment:
+      # Database connection
       WORDPRESS_DB_HOST: db:3306
-      WORDPRESS_DB_USER: ${DB_USER}
-      WORDPRESS_DB_PASSWORD: ${DB_PASSWORD}
-      WORDPRESS_DB_NAME: ${DB_NAME}
+      WORDPRESS_DB_USER: local_user
+      WORDPRESS_DB_PASSWORD: local_password
+      WORDPRESS_DB_NAME: local_db
+      
+      # Redis configuration
       WORDPRESS_REDIS_HOST: redis
       WORDPRESS_REDIS_PORT: 6379
-      WORDPRESS_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      
+      # DEVELOPMENT FLAGS: Enable debug mode to catch PHP notices/errors
+      WORDPRESS_DEBUG: 1
+      
+      # Extra Config (Limits, URLs, etc)
       WORDPRESS_CONFIG_EXTRA: |
         define('WP_MEMORY_LIMIT', '512M');
-        define('DISALLOW_FILE_EDIT', true);
-        define('WP_HOME', 'https://${HOSTNAME}');
-        define('WP_SITEURL', 'https://${HOSTNAME}');
-       # Pass OIDC Variables to Container
+        define('WP_HOME', 'http://localhost:8080');
+        define('WP_SITEURL', 'http://localhost:8080');
+        define('FS_METHOD', 'direct'); // Allows installing plugins locally without FTP prompts
 
-      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID}
-      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET}
-      OIDC_SCOPE: ${OIDC_SCOPE}
-      OIDC_ENDPOINT_LOGIN: ${OIDC_ENDPOINT_LOGIN}
-      OIDC_ENDPOINT_USERINFO: ${OIDC_ENDPOINT_USERINFO}
-      OIDC_ENDPOINT_TOKEN: ${OIDC_ENDPOINT_TOKEN}
-      OIDC_ENDPOINT_LOGOUT: ${OIDC_ENDPOINT_LOGOUT}
-      OIDC_JWKS_URI: ${OIDC_JWKS_URI}
-      OIDC_ISSUER: ${OIDC_ISSUER}
-      OIDC_IDENTITY_KEY: ${OIDC_IDENTITY_KEY}
-      OIDC_NICKNAME_KEY: ${OIDC_NICKNAME_KEY}
-      OIDC_EMAIL_FORMAT: ${OIDC_EMAIL_FORMAT}
-      OIDC_DISPLAYNAME_FORMAT: ${OIDC_DISPLAYNAME_FORMAT}
-      
-      # Boolean Flags
-      OIDC_LINK_EXISTING_USERS: ${OIDC_LINK_EXISTING_USERS}
-      OIDC_CREATE_IF_NOT_EXISTS: ${OIDC_CREATE_IF_NOT_EXISTS}
-      OIDC_REDIRECT_BACK: ${OIDC_REDIRECT_BACK}
-      OIDC_IDENTIFY_WITH_USERNAME: ${OIDC_IDENTIFY_WITH_USERNAME}
-      OIDC_ENABLE_REFRESH_TOKEN: ${OIDC_ENABLE_REFRESH_TOKEN}
-      OIDC_ENFORCE_PRIVACY: ${OIDC_ENFORCE_PRIVACY}
+      # (Optional) You can keep your OIDC variables here if you need to test SSO locally
+      # OIDC_CLIENT_ID: ${OIDC_CLIENT_ID}
+      # ...
 
     networks:
-      - traefik-net
-      - internal-net
+      - local-wp-net
     depends_on:
       - db
       - redis
 
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=traefik-net"
+  # Developer Tooling: WP-CLI
+  wpcli:
+    container_name: local_wp_cli
+    image: wordpress:cli-2.12.0-php8.3
+    user: "33:33" # Matches Debian www-data UID/GID from the main WordPress container
+    volumes:
+      - wp_data:/var/www/html
+      - ./wp-content/themes:/var/www/html/wp-content/themes
+      - ./wp-content/plugins:/var/www/html/wp-content/plugins
+      - ./wp-content/mu-plugins:/var/www/html/wp-content/mu-plugins
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_USER: local_user
+      WORDPRESS_DB_PASSWORD: local_password
+      WORDPRESS_DB_NAME: local_db
+    networks:
+      - local-wp-net
+    depends_on:
+      - db
+      - wordpress
+    # Keeps container alive so you can execute commands into it
+    command: tail -f /dev/null
 
-      # service
-      - "traefik.http.services.${COMPOSE_PROJECT_NAME}_app.loadbalancer.server.port=80"
-      - "traefik.http.services.${COMPOSE_PROJECT_NAME}_app.loadbalancer.server.scheme=http"
-
-      # main router
-      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}_app_main.rule=Host(`${HOSTNAME}`)"
-      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}_app_main.entrypoints=websecure"
-      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}_app_main.tls=true"
-      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}_app_main.tls.certresolver=le"
-      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}_app_main.service=${COMPOSE_PROJECT_NAME}_app"
-
-      # www(http) to www(https) routers
-      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}_app_http.rule=Host(`${HOSTNAME}`)"
-      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}_app_http.entrypoints=web"
-      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}_app_http.middlewares=${COMPOSE_PROJECT_NAME}_app_redirect_to_https@docker"
-      - "traefik.http.middlewares.${COMPOSE_PROJECT_NAME}_app_redirect_to_https.redirectscheme.scheme=https"
-      - "traefik.http.middlewares.${COMPOSE_PROJECT_NAME}_app_redirect_to_https.redirectscheme.permanent=true"
-
-      # non-www(https) to www(https) routers
-      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}_app_nonwww_https.rule=Host(`${TRAEFIK_REDIRECT_TO_WWW}`)"
-      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}_app_nonwww_https.entrypoints=websecure"
-      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}_app_nonwww_https.tls=true"
-      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}_app_nonwww_https.tls.certresolver=le"
-      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}_app_nonwww_https.middlewares=${COMPOSE_PROJECT_NAME}_app_nonwww_https@docker"
-      - "traefik.http.middlewares.${COMPOSE_PROJECT_NAME}_app_nonwww_https.redirectregex.regex=^https://(.+)"
-      - "traefik.http.middlewares.${COMPOSE_PROJECT_NAME}_app_nonwww_https.redirectregex.replacement=https://www.$${1}"
-      - "traefik.http.middlewares.${COMPOSE_PROJECT_NAME}_app_nonwww_https.redirectregex.permanent=true"
-      
   db:
-    container_name: ${COMPOSE_PROJECT_NAME}_db
+    container_name: local_wp_db
     image: mysql:8.0
-    restart: always
+    restart: unless-stopped
     command: '--default-authentication-plugin=mysql_native_password'
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
-      MYSQL_DATABASE: ${DB_NAME}
-      MYSQL_USER: ${DB_USER}
-      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: local_db
+      MYSQL_USER: local_user
+      MYSQL_PASSWORD: local_password
     volumes:
       - db_data:/var/lib/mysql
     networks:
-      - internal-net
+      - local-wp-net
+
   redis:
-    container_name: ${COMPOSE_PROJECT_NAME}_redis
+    container_name: local_wp_redis
     image: redis:alpine
-    restart: always
-    command: redis-server --requirepass ${REDIS_PASSWORD}
+    restart: unless-stopped
     volumes:
       - redis_data:/data
     networks:
-      - internal-net
+      - local-wp-net
 
 volumes:
+  wp_data:
   db_data:
   redis_data:
 
 networks:
-  traefik-net:
-    external: true
-    name: traefik-net
-  internal-net:
+  local-wp-net:
     driver: bridge
-
-# docker compose exec app composer require wpackagist-plugin/daggerhart-openid-connect-generic

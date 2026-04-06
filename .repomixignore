@@ -1,6 +1,5 @@
-wp-content/plugins
-wp-content/mu-plugins
-wp-content/themes/animatorkask/assets
+wp-content/plugins/foogallery/freemius/languages
+
 
 .claude
 .git

@@ -1,5 +1,4 @@
-# Start from the official WordPress image
-FROM wordpress:latest
+FROM wordpress:6.9.4-apache
 
 # Install Git, Unzip, and Less
 # 'less' is required for WP-CLI to display output correctly
